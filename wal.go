@@ -79,15 +79,17 @@ type Options struct {
 	// Perms represents the datafiles modes and permission bits
 	DirPerms  os.FileMode
 	FilePerms os.FileMode
+	// FillID allow writes with a zero ID, will auto fill it with the next
+	FillID bool
 }
 
 // DefaultOptions for Open().
 var DefaultOptions = &Options{
-	NoSync:           false,    // Fsync after every write
-	SegmentSize:      20971520, // 20 MB log segment files.
+	NoSync:           true,     // Fsync after every write
+	SegmentSize:      67108864, // 64 MB log segment files.
 	LogFormat:        Binary,   // Binary format is small and fast.
 	SegmentCacheSize: 2,        // Number of cached in-memory segments
-	NoCopy:           false,    // Make a new copy of data for every Read call.
+	NoCopy:           true,     // Make a new copy of data for every Read call.
 	DirPerms:         0750,     // Permissions for the created directories
 	FilePerms:        0640,     // Permissions for the created data files
 }
@@ -431,7 +433,9 @@ func (l *Log) WriteBatch(b *Batch) error {
 func (l *Log) writeBatch(b *Batch) error {
 	// check that all indexes in batch are sane
 	for i := 0; i < len(b.entries); i++ {
-		if b.entries[i].index != l.lastIndex+uint64(i+1) {
+		if l.opts.FillID {
+			b.entries[i].index = l.lastIndex + uint64(i+1)
+		} else if b.entries[i].index != l.lastIndex+uint64(i+1) {
 			return ErrOutOfOrder
 		}
 	}
