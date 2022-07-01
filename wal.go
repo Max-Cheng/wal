@@ -85,11 +85,11 @@ type Options struct {
 
 // DefaultOptions for Open().
 var DefaultOptions = &Options{
-	NoSync:           true,     // Fsync after every write
+	NoSync:           false,    // Fsync after every write
 	SegmentSize:      67108864, // 64 MB log segment files.
 	LogFormat:        Binary,   // Binary format is small and fast.
 	SegmentCacheSize: 2,        // Number of cached in-memory segments
-	NoCopy:           true,     // Make a new copy of data for every Read call.
+	NoCopy:           false,    // Make a new copy of data for every Read call.
 	DirPerms:         0750,     // Permissions for the created directories
 	FilePerms:        0640,     // Permissions for the created data files
 }
@@ -483,6 +483,21 @@ func (l *Log) writeBatch(b *Batch) error {
 	}
 	b.Clear()
 	return nil
+}
+
+// Len returns the length of the log.
+func (l *Log) Len() (n uint64, err error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	if l.corrupt {
+		return 0, ErrCorrupt
+	} else if l.closed {
+		return 0, ErrClosed
+	}
+	if l.lastIndex == 0 {
+		return 0, nil
+	}
+	return l.lastIndex - l.firstIndex, nil
 }
 
 // FirstIndex returns the index of the first entry in the log. Returns zero
