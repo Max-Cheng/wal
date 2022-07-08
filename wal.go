@@ -86,7 +86,7 @@ type Options struct {
 // DefaultOptions for Open().
 var DefaultOptions = &Options{
 	NoSync:           false,    // Fsync after every write
-	SegmentSize:      67108864, // 64 MB log segment files.
+	SegmentSize:      16777216, // 16 MB log segment files.
 	LogFormat:        Binary,   // Binary format is small and fast.
 	SegmentCacheSize: 2,        // Number of cached in-memory segments
 	NoCopy:           false,    // Make a new copy of data for every Read call.
