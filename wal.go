@@ -485,21 +485,6 @@ func (l *Log) writeBatch(b *Batch) error {
 	return nil
 }
 
-// Len returns the length of the log.
-func (l *Log) Len() (n uint64, err error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	if l.corrupt {
-		return 0, ErrCorrupt
-	} else if l.closed {
-		return 0, ErrClosed
-	}
-	if l.lastIndex == 0 {
-		return 0, nil
-	}
-	return l.lastIndex - l.firstIndex, nil
-}
-
 // FirstIndex returns the index of the first entry in the log. Returns zero
 // when log has no entries.
 func (l *Log) FirstIndex() (index uint64, err error) {
