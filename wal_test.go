@@ -454,19 +454,13 @@ func TestLog(t *testing.T) {
 		testLog(t, nil, 100)
 	})
 	t.Run("no-sync", func(t *testing.T) {
-		t.Run("json", func(t *testing.T) {
-			testLog(t, makeOpts(512, true, JSON), 100)
-		})
 		t.Run("binary", func(t *testing.T) {
-			testLog(t, makeOpts(512, true, Binary), 100)
+			testLog(t, makeOpts(512, true), 100)
 		})
 	})
 	t.Run("sync", func(t *testing.T) {
-		t.Run("json", func(t *testing.T) {
-			testLog(t, makeOpts(512, false, JSON), 100)
-		})
 		t.Run("binary", func(t *testing.T) {
-			testLog(t, makeOpts(512, false, Binary), 100)
+			testLog(t, makeOpts(512, false), 100)
 		})
 	})
 }
@@ -518,7 +512,7 @@ func TestOutliers(t *testing.T) {
 
 	t.Run("fail-corrupted-tail-json", func(t *testing.T) {
 		defer os.RemoveAll("testlog/corrupt-tail")
-		opts := makeOpts(512, true, JSON)
+		opts := makeOpts(512, true)
 		os.MkdirAll("testlog/corrupt-tail", 0777)
 		ioutil.WriteFile(
 			"testlog/corrupt-tail/00000000000000000001",
@@ -552,7 +546,7 @@ func TestOutliers(t *testing.T) {
 
 	t.Run("start-marker-file", func(t *testing.T) {
 		lpath := "testlog/start-marker"
-		opts := makeOpts(512, true, JSON)
+		opts := makeOpts(512, true)
 		l := must(Open(lpath, opts)).(*Log)
 		defer l.Close()
 		for i := uint64(1); i <= 100; i++ {
@@ -601,11 +595,10 @@ func TestOutliers(t *testing.T) {
 
 }
 
-func makeOpts(segSize int, noSync bool, lf LogFormat) *Options {
+func makeOpts(segSize int, noSync bool) *Options {
 	opts := *DefaultOptions
 	opts.SegmentSize = segSize
 	opts.NoSync = noSync
-	opts.LogFormat = lf
 	return &opts
 }
 
@@ -615,7 +608,6 @@ func TestIssue1(t *testing.T) {
 		27, 48, 23, 159, 63, 14, 240, 202, 206, 151, 131, 98, 45, 165, 151, 67,
 		38, 180, 54, 23, 138, 238, 246, 16, 0, 0, 0, 0}
 	opts := *DefaultOptions
-	opts.LogFormat = JSON
 	os.RemoveAll("testlog")
 	l, err := Open("testlog", &opts)
 	if err != nil {
@@ -639,7 +631,6 @@ func TestSimpleTruncateFront(t *testing.T) {
 
 	opts := &Options{
 		NoSync:      true,
-		LogFormat:   JSON,
 		SegmentSize: 100,
 	}
 
@@ -738,7 +729,6 @@ func TestSimpleTruncateBack(t *testing.T) {
 
 	opts := &Options{
 		NoSync:      true,
-		LogFormat:   JSON,
 		SegmentSize: 100,
 	}
 

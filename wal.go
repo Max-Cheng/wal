@@ -1,22 +1,15 @@
 package wal
 
 import (
-	"bytes"
-	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"unicode/utf8"
-	"unsafe"
 
-	"github.com/tidwall/gjson"
 	"github.com/tidwall/tinylru"
 )
 
@@ -45,18 +38,6 @@ var (
 	ErrOutOfRange = errors.New("out of range")
 )
 
-// LogFormat is the format of the log files.
-type LogFormat byte
-
-const (
-	// Binary format writes entries in binary. This is the default and, unless
-	// a good reason otherwise, should be used in production.
-	Binary LogFormat = 0
-	// JSON format writes entries as JSON lines. This causes larger, human
-	// readable files.
-	JSON LogFormat = 1
-)
-
 // Options for Log
 type Options struct {
 	// NoSync disables fsync after writes. This is less durable and puts the
@@ -65,8 +46,6 @@ type Options struct {
 	// SegmentSize of each segment. This is just a target value, actual size
 	// may differ. Default is 20 MB.
 	SegmentSize int
-	// LogFormat is the format of the log files. Default is Binary.
-	LogFormat LogFormat
 	// SegmentCacheSize is the maximum number of segments that will be held in
 	// memory for caching. Increasing this value may enhance performance for
 	// concurrent read operations. Default is 1
@@ -87,7 +66,6 @@ type Options struct {
 var DefaultOptions = &Options{
 	NoSync:           false,    // Fsync after every write
 	SegmentSize:      16777216, // 16 MB log segment files.
-	LogFormat:        Binary,   // Binary format is small and fast.
 	SegmentCacheSize: 2,        // Number of cached in-memory segments
 	NoCopy:           false,    // Make a new copy of data for every Read call.
 	DirPerms:         0750,     // Permissions for the created directories
@@ -107,6 +85,7 @@ type Log struct {
 	sfile      *os.File    // tail segment file handle
 	wbatch     Batch       // reusable write batch
 	scache     tinylru.LRU // segment entries cache
+	uvarintBuf []byte      // reusable buffer for uvarint encoding
 }
 
 // segment represents a single segment file.
@@ -147,6 +126,7 @@ func Open(path string, opts *Options) (*Log, error) {
 	}
 	l := &Log{path: path, opts: *opts}
 	l.scache.Resize(l.opts.SegmentCacheSize)
+	l.uvarintBuf = make([]byte, binary.MaxVarintLen64)
 	if err := os.MkdirAll(path, l.opts.DirPerms); err != nil {
 		return nil, err
 	}
@@ -175,7 +155,7 @@ func (l *Log) pushCache(segIdx int) {
 
 // load all the segments. This operation also cleans up any START/END segments.
 func (l *Log) load() error {
-	fis, err := ioutil.ReadDir(l.path)
+	fis, err := os.ReadDir(l.path)
 	if err != nil {
 		return err
 	}
@@ -209,6 +189,7 @@ func (l *Log) load() error {
 		l.segments = append(l.segments, &segment{
 			index: 1,
 			path:  filepath.Join(l.path, segmentName(1)),
+			ebuf:  make([]byte, 0, 4096),
 		})
 		l.firstIndex = 1
 		l.lastIndex = 0
@@ -324,10 +305,11 @@ func (l *Log) Write(index uint64, data []byte) error {
 
 func (l *Log) appendEntry(dst []byte, index uint64, data []byte) (out []byte,
 	epos bpos) {
-	if l.opts.LogFormat == JSON {
-		return appendJSONEntry(dst, index, data)
-	}
-	return appendBinaryEntry(dst, data)
+	// data_size + data
+	pos := len(dst)
+	dst = appendUvarint(dst, l.uvarintBuf[:], uint64(len(data)))
+	dst = append(dst, data...)
+	return dst, bpos{pos, len(dst)}
 }
 
 // Cycle the old segment for a new segment.
@@ -343,6 +325,7 @@ func (l *Log) cycle() error {
 	s := &segment{
 		index: l.lastIndex + 1,
 		path:  filepath.Join(l.path, segmentName(l.lastIndex+1)),
+		ebuf:  make([]byte, 0, 4096),
 	}
 	var err error
 	l.sfile, err = os.OpenFile(s.path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)
@@ -353,39 +336,7 @@ func (l *Log) cycle() error {
 	return nil
 }
 
-func appendJSONEntry(dst []byte, index uint64, data []byte) (out []byte,
-	epos bpos) {
-	// {"index":number,"data":string}
-	pos := len(dst)
-	dst = append(dst, `{"index":"`...)
-	dst = strconv.AppendUint(dst, index, 10)
-	dst = append(dst, `","data":`...)
-	dst = appendJSONData(dst, data)
-	dst = append(dst, '}', '\n')
-	return dst, bpos{pos, len(dst)}
-}
-
-func appendJSONData(dst []byte, s []byte) []byte {
-	if utf8.Valid(s) {
-		b, _ := json.Marshal(*(*string)(unsafe.Pointer(&s)))
-		dst = append(dst, '"', '+')
-		return append(dst, b[1:]...)
-	}
-	dst = append(dst, '"', '$')
-	dst = append(dst, base64.URLEncoding.EncodeToString(s)...)
-	return append(dst, '"')
-}
-
-func appendBinaryEntry(dst []byte, data []byte) (out []byte, epos bpos) {
-	// data_size + data
-	pos := len(dst)
-	dst = appendUvarint(dst, uint64(len(data)))
-	dst = append(dst, data...)
-	return dst, bpos{pos, len(dst)}
-}
-
-func appendUvarint(dst []byte, x uint64) []byte {
-	var buf [10]byte
+func appendUvarint(dst, buf []byte, x uint64) []byte {
 	n := binary.PutUvarint(buf[:], x)
 	dst = append(dst, buf[:n]...)
 	return dst
@@ -549,7 +500,7 @@ func (l *Log) findSegment(index uint64) int {
 }
 
 func (l *Log) loadSegmentEntries(s *segment) error {
-	data, err := ioutil.ReadFile(s.path)
+	data, err := os.ReadFile(s.path)
 	if err != nil {
 		return err
 	}
@@ -558,11 +509,7 @@ func (l *Log) loadSegmentEntries(s *segment) error {
 	var pos int
 	for exidx := s.index; len(data) > 0; exidx++ {
 		var n int
-		if l.opts.LogFormat == JSON {
-			n, err = loadNextJSONEntry(data)
-		} else {
-			n, err = loadNextBinaryEntry(data)
-		}
+		n, err = loadNextBinaryEntry(data)
 		if err != nil {
 			return err
 		}
@@ -573,20 +520,6 @@ func (l *Log) loadSegmentEntries(s *segment) error {
 	s.ebuf = ebuf
 	s.epos = epos
 	return nil
-}
-
-func loadNextJSONEntry(data []byte) (n int, err error) {
-	// {"index":number,"data":string}
-	idx := bytes.IndexByte(data, '\n')
-	if idx == -1 {
-		return 0, ErrCorrupt
-	}
-	line := data[:idx]
-	dres := gjson.Get(*(*string)(unsafe.Pointer(&line)), "data")
-	if dres.Type != gjson.String {
-		return 0, ErrCorrupt
-	}
-	return idx + 1, nil
 }
 
 func loadNextBinaryEntry(data []byte) (n int, err error) {
@@ -653,9 +586,6 @@ func (l *Log) Read(index uint64) (data []byte, err error) {
 	}
 	epos := s.epos[index-s.index]
 	edata := s.ebuf[epos.pos:epos.end]
-	if l.opts.LogFormat == JSON {
-		return readJSON(edata)
-	}
 	// binary read
 	size, n := binary.Uvarint(edata)
 	if n <= 0 {
@@ -669,25 +599,6 @@ func (l *Log) Read(index uint64) (data []byte, err error) {
 	} else {
 		data = make([]byte, size)
 		copy(data, edata[n:])
-	}
-	return data, nil
-}
-
-//go:noinline
-func readJSON(edata []byte) ([]byte, error) {
-	var data []byte
-	s := gjson.Get(*(*string)(unsafe.Pointer(&edata)), "data").String()
-	if len(s) > 0 && s[0] == '$' {
-		var err error
-		data, err = base64.URLEncoding.DecodeString(s[1:])
-		if err != nil {
-			return nil, ErrCorrupt
-		}
-	} else if len(s) > 0 && s[0] == '+' {
-		data = make([]byte, len(s[1:]))
-		copy(data, s[1:])
-	} else {
-		return nil, ErrCorrupt
 	}
 	return data, nil
 }
