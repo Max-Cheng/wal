@@ -1,5 +1,5 @@
-module github.com/zinclabs/wal
+module github.com/zincsearch/wal
 
-go 1.16
+go 1.18
 
 require github.com/tidwall/tinylru v1.1.0

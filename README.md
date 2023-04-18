@@ -1,5 +1,5 @@
 # `wal`
-[![GoDoc](https://godoc.org/github.com/zinclabs/wal?status.svg)](https://godoc.org/github.com/zinclabs/wal)
+[![GoDoc](https://godoc.org/github.com/zincsearch/wal?status.svg)](https://godoc.org/github.com/zincsearch/wal)
 
 A simple and fast write ahead log for Go.
 
@@ -20,7 +20,7 @@ Forked from https://github.com/tidwall/wal
 To start using `wal`, install Go and run `go get`:
 
 ```sh
-$ go get -u github.com/zinclabs/wal
+$ go get -u github.com/zincsearch/wal
 ```
 
 This will retrieve the library.
