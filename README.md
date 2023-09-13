@@ -29,7 +29,7 @@ This will retrieve the library.
 
 ```go
 // open a new log file
-log, err := Open("mylog", nil)
+log, err := wal.Open("mylog", nil)
 
 // write some entries
 err = log.Write(1, []byte("first entry"))
@@ -49,7 +49,7 @@ Batch writes:
 ```go
 
 // write three entries as a batch
-batch := new(Batch)
+batch := new(wal.Batch)
 batch.Write(1, []byte("first entry"))
 batch.Write(2, []byte("second entry"))
 batch.Write(3, []byte("third entry"))
@@ -66,8 +66,8 @@ err = log.Write(1, []byte("first entry"))
 err = log.Write(1000, []byte("thousandth entry"))
 
 // truncate the log from index starting 350 and ending with 950.
-err = l.TruncateFront(350)
-err = l.TruncateBack(950)
+err = log.TruncateFront(350)
+err = log.TruncateBack(950)
 ```
 
 
