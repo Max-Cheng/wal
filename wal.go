@@ -678,6 +678,9 @@ func (l *Log) truncateFront(index uint64) (err error) {
 		}
 		return f.Close()
 	}()
+	if err != nil {
+		return fmt.Errorf("failed to create temp file for new start segment: %w", err)
+	}
 	// Rename the TEMP file to it's START file name.
 	startName := filepath.Join(l.path, segmentName(index)+".START")
 	if err = os.Rename(tempName, startName); err != nil {
@@ -784,6 +787,9 @@ func (l *Log) truncateBack(index uint64) (err error) {
 		}
 		return f.Close()
 	}()
+	if err != nil {
+		return fmt.Errorf("failed to create temp file for new end segment: %w", err)
+	}
 	// Rename the TEMP file to it's END file name.
 	endName := filepath.Join(l.path, segmentName(s.index)+".END")
 	if err = os.Rename(tempName, endName); err != nil {
