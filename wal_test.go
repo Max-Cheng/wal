@@ -2,7 +2,6 @@ package wal
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"strings"
@@ -513,34 +512,52 @@ func TestOutliers(t *testing.T) {
 	t.Run("fail-corrupted-tail-json", func(t *testing.T) {
 		defer os.RemoveAll("testlog/corrupt-tail")
 		opts := makeOpts(512, true)
+		optsRecoverTail := *opts
+		optsRecoverTail.RecoverCorruptedTail = true
 		os.MkdirAll("testlog/corrupt-tail", 0777)
-		ioutil.WriteFile(
+		os.WriteFile(
 			"testlog/corrupt-tail/00000000000000000001",
 			[]byte("\n"), 0666)
 		if l, err := Open("testlog/corrupt-tail", opts); err != ErrCorrupt {
 			l.Close()
 			t.Fatalf("expected %v, got %v", ErrCorrupt, err)
 		}
-		ioutil.WriteFile(
+		if l, err := Open("testlog/corrupt-tail", &optsRecoverTail); err != nil {
+			l.Close()
+			t.Fatalf("expected %v, got %v", nil, err)
+		}
+		os.WriteFile(
 			"testlog/corrupt-tail/00000000000000000001",
 			[]byte(`{}`+"\n"), 0666)
 		if l, err := Open("testlog/corrupt-tail", opts); err != ErrCorrupt {
 			l.Close()
 			t.Fatalf("expected %v, got %v", ErrCorrupt, err)
 		}
-		ioutil.WriteFile(
+		if l, err := Open("testlog/corrupt-tail", &optsRecoverTail); err != nil {
+			l.Close()
+			t.Fatalf("expected %v, got %v", nil, err)
+		}
+		os.WriteFile(
 			"testlog/corrupt-tail/00000000000000000001",
 			[]byte(`{"index":"1"}`+"\n"), 0666)
 		if l, err := Open("testlog/corrupt-tail", opts); err != ErrCorrupt {
 			l.Close()
 			t.Fatalf("expected %v, got %v", ErrCorrupt, err)
 		}
-		ioutil.WriteFile(
+		if l, err := Open("testlog/corrupt-tail", &optsRecoverTail); err != nil {
+			l.Close()
+			t.Fatalf("expected %v, got %v", nil, err)
+		}
+		os.WriteFile(
 			"testlog/corrupt-tail/00000000000000000001",
 			[]byte(`{"index":"1","data":"?"}`), 0666)
 		if l, err := Open("testlog/corrupt-tail", opts); err != ErrCorrupt {
 			l.Close()
 			t.Fatalf("expected %v, got %v", ErrCorrupt, err)
+		}
+		if l, err := Open("testlog/corrupt-tail", &optsRecoverTail); err != nil {
+			l.Close()
+			t.Fatalf("expected %v, got %v", nil, err)
 		}
 	})
 
@@ -555,8 +572,8 @@ func TestOutliers(t *testing.T) {
 		path := l.segments[l.findSegment(35)].path
 		firstIndex := l.segments[l.findSegment(35)].index
 		must(nil, l.Close())
-		data := must(ioutil.ReadFile(path)).([]byte)
-		must(nil, ioutil.WriteFile(path+".START", data, 0666))
+		data := must(os.ReadFile(path)).([]byte)
+		must(nil, os.WriteFile(path+".START", data, 0666))
 		l = must(Open(lpath, opts)).(*Log)
 		defer l.Close()
 		testFirstLast(t, l, firstIndex, 100, nil)
