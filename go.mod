@@ -1,5 +1,5 @@
-module github.com/zincsearch/wal
+module github.com/Max-Cheng/wal
 
-go 1.18
+go 1.21
 
-require github.com/tidwall/tinylru v1.1.0
+require github.com/tidwall/tinylru v1.2.1

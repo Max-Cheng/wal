@@ -345,29 +345,6 @@ func appendUvarint(dst, buf []byte, x uint64) []byte {
 	return dst
 }
 
-// Batch of entries. Used to write multiple entries at once using WriteBatch().
-type Batch struct {
-	entries []batchEntry
-	datas   []byte
-}
-
-type batchEntry struct {
-	index uint64
-	size  int
-}
-
-// Write an entry to the batch
-func (b *Batch) Write(index uint64, data []byte) {
-	b.entries = append(b.entries, batchEntry{index, len(data)})
-	b.datas = append(b.datas, data...)
-}
-
-// Clear the batch for reuse.
-func (b *Batch) Clear() {
-	b.entries = b.entries[:0]
-	b.datas = b.datas[:0]
-}
-
 // WriteBatch writes the entries in the batch to the log in the order that they
 // were added to the batch. The batch is cleared upon a successful return.
 func (l *Log) WriteBatch(b *Batch) error {
